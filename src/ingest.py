@@ -10,7 +10,16 @@ def ingest_competitions() -> pd.DataFrame:
     cols = ["competition_id", "season_id", "country_name", "competition_name", "season_name"]
     comps_subset = comps[cols]
     with get_connection() as conn:
-        comps_subset.to_sql("competitions", conn, if_exists="replace", index=False)
+        # Staging-table pattern preserves the real competitions table's
+        # primary key, which the matches foreign key depends on.
+        comps_subset.to_sql("_competitions_staging", conn, if_exists="replace", index=False)
+        conn.execute(
+            "INSERT OR IGNORE INTO competitions "
+            "(competition_id, season_id, country_name, competition_name, season_name) "
+            "SELECT competition_id, season_id, country_name, competition_name, season_name "
+            "FROM _competitions_staging"
+        )
+        conn.execute("DROP TABLE _competitions_staging")
     print(f"  Loaded {len(comps_subset)} competition+season pairs.")
     return comps_subset
 
