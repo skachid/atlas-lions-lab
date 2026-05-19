@@ -6,3 +6,4 @@ ipykernel>=6.0
 statsbombpy>=1.11
 requests>=2.31
 matplotlib>=3.8
+soccerdata>=1.6
