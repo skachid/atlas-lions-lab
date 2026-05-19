@@ -279,6 +279,11 @@ def ingest_u20_wc_2025() -> None:
         return
 
     raw = _extract_score_header(tables, "U20 WC 2025")
+    for m in raw:
+        if not m["home"].endswith(" U20"):
+            m["home"] += " U20"
+        if not m["away"].endswith(" U20"):
+            m["away"] += " U20"
     print(f"  Found {len(raw)} matches")
     n = _write_matches(raw, U20_WC_COMP_ID, 2025, "FIFA U20 World Cup", "International")
     print(f"  Total inserted: {n}")
