@@ -159,8 +159,15 @@ def _write(row: dict) -> None:
 
 # ── Main ingest ────────────────────────────────────────────────────────────────
 
+# Players not in StatsBomb national-team data but part of the Morocco squad
+EXTRA_PLAYERS = [
+    "Brahim Díaz",
+    "Ayyoub Bouaddi",
+]
+
+
 def _get_moroccan_player_names() -> list[str]:
-    """Return distinct player names who appeared for Morocco in our DB."""
+    """Return distinct player names who appeared for Morocco in our DB, plus extras."""
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT DISTINCT p.player_name "
@@ -170,7 +177,11 @@ def _get_moroccan_player_names() -> list[str]:
             "WHERE t.team_name = 'Morocco' "
             "ORDER BY p.player_name"
         ).fetchall()
-    return [r[0] for r in rows]
+    names = [r[0] for r in rows]
+    for name in EXTRA_PLAYERS:
+        if name not in names:
+            names.append(name)
+    return names
 
 
 def ingest_all(season_label: str = "2024-25") -> None:
