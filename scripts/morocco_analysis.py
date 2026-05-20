@@ -59,9 +59,8 @@ adjusted = run_wc_simulations(
 # ── 2. CHART 1: TOP CONTENDERS PROBABILITY ────────────────────────────────────
 
 TOP_TEAMS = [
-    "Morocco", "Norway", "Spain", "Ivory Coast", "England",
-    "Netherlands", "Argentina", "Senegal", "Brazil", "France",
-    "Belgium", "Switzerland", "Algeria",
+    "Morocco", "Spain", "England", "Netherlands", "France",
+    "Norway", "Argentina", "Brazil", "Germany",
 ]
 
 fig, ax = plt.subplots(figsize=(12, 7))
@@ -88,7 +87,7 @@ ax.set_yticks(y)
 ax.set_yticklabels(TOP_TEAMS, fontsize=10)
 ax.set_xlabel("Championship Probability (%)", fontsize=10)
 ax.axvline(x=0, color="#555", linewidth=0.8)
-ax.set_xlim(0, 14)
+ax.set_xlim(0, 16)
 ax.grid(axis="x", alpha=0.3)
 ax.legend(loc="lower right", fontsize=9)
 
@@ -289,12 +288,15 @@ print("  ✓ Chart 4: U20 WC 2025 journey")
 # ── 6. CHART 5: KNOCKOUT STAGE PROBABILITIES COMPARISON ──────────────────────
 
 stage_teams = {
-    "Morocco": adjusted,
-    "Spain":   adjusted,
-    "Argentina": adjusted,
-    "Brazil":  adjusted,
-    "France":  adjusted,
-    "England": adjusted,
+    "Morocco":     adjusted,
+    "Spain":       adjusted,
+    "England":     adjusted,
+    "Netherlands": adjusted,
+    "France":      adjusted,
+    "Norway":      adjusted,
+    "Argentina":   adjusted,
+    "Brazil":      adjusted,
+    "Germany":     adjusted,
 }
 stages = ["p_r16", "p_qf", "p_sf", "p_final", "p_champion"]
 stage_labels = ["Round of 16", "Quarter-final", "Semi-final", "Final", "Champion"]
@@ -304,12 +306,15 @@ fig.suptitle("2026 World Cup Knockout Probability by Round — Evidence-Adjusted
              fontsize=13, fontweight="bold", color="white")
 
 team_colors = {
-    "Morocco":   MOROCCO_RED,
-    "Spain":     "#FFDD00",
-    "Argentina": "#74ACDF",
-    "Brazil":    "#009C3B",
-    "France":    "#0055A4",
-    "England":   "#CF081F",
+    "Morocco":     MOROCCO_RED,
+    "Spain":       "#FFDD00",
+    "England":     "#CF081F",
+    "Netherlands": "#FF6600",
+    "France":      "#0055A4",
+    "Norway":      "#003087",
+    "Argentina":   "#74ACDF",
+    "Brazil":      "#009C3B",
+    "Germany":     "#AAAAAA",
 }
 
 x = np.arange(len(stages))
