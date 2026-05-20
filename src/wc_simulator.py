@@ -120,11 +120,17 @@ def _build_canonical_ids() -> Tuple[Dict[str, int], Dict[int, int]]:
 
 
 def _load_all_matches(alias_map: Dict[int, int]) -> List[dict]:
-    """All matches with team IDs remapped to canonical IDs."""
+    """All matches from 2010 onwards with team IDs remapped to canonical IDs.
+
+    NULL/empty match_date rows are kept because they come from recently scraped
+    data (AFCON 2025, WC 2026 qualifiers) that was ingested without dates.
+    """
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT home_team_id, away_team_id, home_score, away_score "
-            "FROM matches WHERE home_score IS NOT NULL AND away_score IS NOT NULL"
+            "FROM matches "
+            "WHERE home_score IS NOT NULL AND away_score IS NOT NULL "
+            "AND (match_date IS NULL OR match_date = '' OR match_date >= '2010-01-01')"
         ).fetchall()
     return [{
         "home_team_id": alias_map.get(r[0], r[0]),
@@ -134,13 +140,18 @@ def _load_all_matches(alias_map: Dict[int, int]) -> List[dict]:
 
 
 def _load_international_matches(alias_map: Dict[int, int]) -> List[dict]:
-    """International-only matches (qualifiers + tournaments) for Poisson calibration."""
+    """International-only matches (qualifiers + tournaments) from 2010 onwards for Poisson calibration.
+
+    AFCON 2025 matches use competition_id=1267 (already in INTERNATIONAL_COMP_IDS) but
+    have NULL match_date; they are preserved by the NULL guard in the date filter.
+    """
     ids = ",".join(str(i) for i in INTERNATIONAL_COMP_IDS)
     with get_connection() as conn:
         rows = conn.execute(
             f"SELECT home_team_id, away_team_id, home_score, away_score "
             f"FROM matches WHERE competition_id IN ({ids}) "
-            f"AND home_score IS NOT NULL AND away_score IS NOT NULL"
+            f"AND home_score IS NOT NULL AND away_score IS NOT NULL "
+            f"AND (match_date IS NULL OR match_date = '' OR match_date >= '2010-01-01')"
         ).fetchall()
     return [{
         "home_team_id": alias_map.get(r[0], r[0]),
