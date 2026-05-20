@@ -1,4 +1,4 @@
-# Football Is Life
+# Atlas Lions Lab
 
 Personal soccer-data analysis & forecasting project. Pulls **StatsBomb Open Data**, loads it into a local **SQLite** database, and runs forecasting math (Poisson, Elo, Monte Carlo) on top.
 
