@@ -344,7 +344,7 @@ print("""
 SIMULATION PARAMETERS
 ─────────────────────
 Model:      Monte Carlo, 10,000 iterations
-Group stage: Dixon-Coles Poisson (international matches only, avg 1.37 G/game)
+Group stage: Poisson (international matches, opponent-Elo-weighted, avg 1.29 G/game)
 Knockout:    Elo win probabilities (all 4,014 matches ≥2010, neutral venue)
 Overrides applied to Morocco:
   • Elo boost:      +40 points

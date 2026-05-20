@@ -1,44 +1,68 @@
 """Poisson model for match outcomes."""
 from __future__ import annotations
 import math
-from typing import Iterable, Dict, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 
 def poisson_pmf(k: int, lam: float) -> float:
     return (lam ** k) * math.exp(-lam) / math.factorial(k)
 
 
-def compute_team_strengths(matches: Iterable[dict]) -> Tuple[Dict[int, dict], float, float]:
-    home_goals_for, home_goals_against, home_games = {}, {}, {}
-    away_goals_for, away_goals_against, away_games = {}, {}, {}
-    total_home_goals = total_away_goals = total_matches = 0
-    for m in matches:
+def compute_team_strengths(
+    matches: Iterable[dict],
+    weights: Optional[List[Tuple[float, float]]] = None,
+) -> Tuple[Dict[int, dict], float, float]:
+    """Compute attack/defense indices for each team.
+
+    weights: per-match list of (w_home, w_away).  w_home down-weights the home
+    team's stats when the away opponent is weak; w_away does the same for the
+    away team.  When None every match is weighted 1.0.  Weighted league averages
+    are used so attack/defense indices stay correctly normalised.
+    """
+    home_goals_for: Dict[int, float] = {}
+    home_goals_against: Dict[int, float] = {}
+    home_games: Dict[int, float] = {}
+    away_goals_for: Dict[int, float] = {}
+    away_goals_against: Dict[int, float] = {}
+    away_games: Dict[int, float] = {}
+    total_home_goals = total_home_weight = 0.0
+    total_away_goals = total_away_weight = 0.0
+
+    for i, m in enumerate(matches):
         if m["home_score"] is None or m["away_score"] is None:
             continue
+        w_h, w_a = weights[i] if weights is not None else (1.0, 1.0)
         h, a = int(m["home_team_id"]), int(m["away_team_id"])
         hs, as_ = int(m["home_score"]), int(m["away_score"])
-        home_goals_for[h] = home_goals_for.get(h, 0) + hs
-        home_goals_against[h] = home_goals_against.get(h, 0) + as_
-        home_games[h] = home_games.get(h, 0) + 1
-        away_goals_for[a] = away_goals_for.get(a, 0) + as_
-        away_goals_against[a] = away_goals_against.get(a, 0) + hs
-        away_games[a] = away_games.get(a, 0) + 1
-        total_home_goals += hs
-        total_away_goals += as_
-        total_matches += 1
-    if total_matches == 0:
+
+        home_goals_for[h]     = home_goals_for.get(h, 0.0)     + hs  * w_h
+        home_goals_against[h] = home_goals_against.get(h, 0.0) + as_ * w_h
+        home_games[h]         = home_games.get(h, 0.0)         + w_h
+
+        away_goals_for[a]     = away_goals_for.get(a, 0.0)     + as_ * w_a
+        away_goals_against[a] = away_goals_against.get(a, 0.0) + hs  * w_a
+        away_games[a]         = away_games.get(a, 0.0)         + w_a
+
+        total_home_goals  += hs  * w_h
+        total_home_weight += w_h
+        total_away_goals  += as_ * w_a
+        total_away_weight += w_a
+
+    if total_home_weight == 0 or total_away_weight == 0:
         raise ValueError("No completed matches found.")
-    league_home_avg = total_home_goals / total_matches
-    league_away_avg = total_away_goals / total_matches
+
+    league_home_avg = total_home_goals / total_home_weight
+    league_away_avg = total_away_goals / total_away_weight
+
     all_team_ids = set(home_games) | set(away_games)
     strengths = {}
     for tid in all_team_ids:
-        hg, ag = home_games.get(tid, 0), away_games.get(tid, 0)
+        hg, ag = home_games.get(tid, 0.0), away_games.get(tid, 0.0)
         strengths[tid] = {
-            "home_attack": (home_goals_for.get(tid, 0) / hg) / league_home_avg if hg > 0 else 1.0,
-            "home_defense": (home_goals_against.get(tid, 0) / hg) / league_away_avg if hg > 0 else 1.0,
-            "away_attack": (away_goals_for.get(tid, 0) / ag) / league_away_avg if ag > 0 else 1.0,
-            "away_defense": (away_goals_against.get(tid, 0) / ag) / league_home_avg if ag > 0 else 1.0,
+            "home_attack":   (home_goals_for.get(tid, 0.0)     / hg) / league_home_avg if hg > 0 else 1.0,
+            "home_defense":  (home_goals_against.get(tid, 0.0) / hg) / league_away_avg if hg > 0 else 1.0,
+            "away_attack":   (away_goals_for.get(tid, 0.0)     / ag) / league_away_avg if ag > 0 else 1.0,
+            "away_defense":  (away_goals_against.get(tid, 0.0) / ag) / league_home_avg if ag > 0 else 1.0,
         }
     return strengths, league_home_avg, league_away_avg
 

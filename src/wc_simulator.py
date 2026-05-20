@@ -10,7 +10,7 @@ Usage:
 from __future__ import annotations
 
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -65,6 +65,11 @@ QF_SLOTS  = [(0,1),(4,5),(2,3),(6,7)]
 # SF pairs by QF index
 SF_SLOTS  = [(0,1),(2,3)]
 
+
+# Minimum international matches required for full Poisson credibility.
+# Teams below this threshold have their attack/defense indices blended toward
+# the league mean (1.0) proportionally: credibility = min(n, threshold) / threshold.
+POISSON_CREDIBILITY_THRESHOLD = 12
 
 # International competition IDs — used to filter Poisson training data
 INTERNATIONAL_COMP_IDS = {
@@ -158,6 +163,24 @@ def _load_international_matches(alias_map: Dict[int, int]) -> List[dict]:
         "away_team_id": alias_map.get(r[1], r[1]),
         "home_score": r[2], "away_score": r[3],
     } for r in rows]
+
+
+# Weight parameters for opponent-strength weighting of Poisson data.
+# Linear around 1500; floor prevents minnow matches from counting as zero.
+_ELO_WEIGHT_CENTER = 1500.0
+_ELO_WEIGHT_SCALE  = 400.0
+_ELO_WEIGHT_MIN    = 0.2
+_ELO_WEIGHT_MAX    = 2.0
+
+
+def _opponent_weight(elo: float) -> float:
+    """Return a Poisson match weight based on opponent Elo.
+
+    1500-Elo opponent → 1.0.  Each 400 points above/below shifts by ±1.0,
+    clamped to [0.2, 2.0] so even weak-opposition results count a little.
+    """
+    w = (elo - _ELO_WEIGHT_CENTER) / _ELO_WEIGHT_SCALE + 1.0
+    return max(_ELO_WEIGHT_MIN, min(_ELO_WEIGHT_MAX, w))
 
 
 def _neutral_lambdas(a_id: Optional[int], b_id: Optional[int],
@@ -341,10 +364,45 @@ def run_wc_simulations(
     print("Computing Elo ratings (all matches)...")
     elo = fit_ratings(all_matches)
 
-    print("Computing Poisson strengths (international matches only)...")
-    strengths, home_avg, away_avg = compute_team_strengths(intl_matches)
+    print("Computing Poisson strengths (international matches, opponent-weighted)...")
+    poisson_weights = [
+        (
+            _opponent_weight(elo.get(m["away_team_id"], DEFAULT_RATING)),
+            _opponent_weight(elo.get(m["home_team_id"], DEFAULT_RATING)),
+        )
+        for m in intl_matches
+    ]
+    effective_matches = sum(w_h + w_a for w_h, w_a in poisson_weights) / 2
+    print(f"  {len(intl_matches):,} matches → {effective_matches:.0f} effective after opponent-weighting")
+    strengths, home_avg, away_avg = compute_team_strengths(intl_matches, weights=poisson_weights)
     avg_goals = (home_avg + away_avg) / 2
-    print(f"  avg goals/game: {avg_goals:.2f}")
+    print(f"  avg goals/game (weighted): {avg_goals:.2f}")
+
+    # Credibility-blend Poisson strengths toward mean for data-sparse teams.
+    # Use raw match counts (not weighted) — the threshold is "matches in the DB".
+    intl_game_counts: Counter = Counter()
+    for m in intl_matches:
+        intl_game_counts[m["home_team_id"]] += 1
+        intl_game_counts[m["away_team_id"]] += 1
+
+    regressed = []
+    for tid, s in strengths.items():
+        n = intl_game_counts.get(tid, 0)
+        cred = min(n, POISSON_CREDIBILITY_THRESHOLD) / POISSON_CREDIBILITY_THRESHOLD
+        if cred < 1.0:
+            strengths[tid] = {k: cred * v + (1.0 - cred) for k, v in s.items()}
+            regressed.append((n, cred, tid))
+
+    if regressed:
+        id_to_name = {v: k for k, v in name_id.items()}
+        wc_teams = {t for g in WC_2026_GROUPS.values() for t in g}
+        wc_regressed = [(n, cred, tid) for n, cred, tid in regressed
+                        if id_to_name.get(tid, "") in wc_teams]
+        wc_regressed.sort()
+        print(f"  Credibility regression: {len(regressed)} total teams blended "
+              f"({len(wc_regressed)} are WC 2026 participants):")
+        for n, cred, tid in wc_regressed:
+            print(f"    {id_to_name.get(tid, tid):<25}  {n:>2} matches  cred={cred:.2f}")
 
     # Apply per-team overrides
     if overrides:
