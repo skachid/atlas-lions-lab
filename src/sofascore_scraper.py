@@ -163,6 +163,8 @@ def _write(row: dict) -> None:
 EXTRA_PLAYERS = [
     "Brahim Díaz",
     "Ayyoub Bouaddi",
+    "Othmane Maama",
+    "Yassir Zabiri",
 ]
 
 

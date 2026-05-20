@@ -296,9 +296,23 @@ def _sim_tournament(name_id: Dict[str, int], strengths: dict,
 
 # ── Monte Carlo runner ─────────────────────────────────────────────────────────
 
-def run_wc_simulations(n_simulations: int = 10_000, seed: int = 42) -> Dict[str, dict]:
+def run_wc_simulations(
+    n_simulations: int = 10_000,
+    seed: int = 42,
+    overrides: Optional[Dict[str, dict]] = None,
+) -> Dict[str, dict]:
     """
     Run Monte Carlo simulations of the 2026 FIFA World Cup.
+
+    overrides: optional per-team adjustments applied after base ratings are computed.
+      Example:
+        overrides = {
+            "Morocco": {
+                "elo_boost":      25,   # flat points added to Elo
+                "attack_factor":  1.12, # multiply Poisson attack strengths
+                "defense_factor": 1.0,  # multiply Poisson defense strengths (lower = better)
+            }
+        }
 
     Returns dict: team_name → {p_r32, p_r16, p_qf, p_sf, p_final, p_champion}
     """
@@ -321,6 +335,25 @@ def run_wc_simulations(n_simulations: int = 10_000, seed: int = 42) -> Dict[str,
     avg_goals = (home_avg + away_avg) / 2
     print(f"  avg goals/game: {avg_goals:.2f}")
 
+    # Apply per-team overrides
+    if overrides:
+        for team_name, adj in overrides.items():
+            tid = name_id.get(team_name)
+            if tid is None:
+                continue
+            if "elo_boost" in adj:
+                elo[tid] = elo.get(tid, DEFAULT_RATING) + adj["elo_boost"]
+            if tid in strengths:
+                s = strengths[tid]
+                af = adj.get("attack_factor", 1.0)
+                df = adj.get("defense_factor", 1.0)
+                strengths[tid] = {
+                    "home_attack":   s["home_attack"]   * af,
+                    "away_attack":   s["away_attack"]   * af,
+                    "home_defense":  s["home_defense"]  * df,
+                    "away_defense":  s["away_defense"]  * df,
+                }
+
     all_teams = [t for g in WC_2026_GROUPS.values() for t in g]
     counts: Dict[str, Dict[str, int]] = {t: defaultdict(int) for t in all_teams}
 
@@ -335,7 +368,6 @@ def run_wc_simulations(n_simulations: int = 10_000, seed: int = 42) -> Dict[str,
     summary = {}
     for team in all_teams:
         c = counts[team]
-        total = sum(c.values())
         # p_X = probability of reaching AT LEAST round X
         cum = 0
         p = {}
