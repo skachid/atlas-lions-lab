@@ -66,10 +66,25 @@ QF_SLOTS  = [(0,1),(4,5),(2,3),(6,7)]
 SF_SLOTS  = [(0,1),(2,3)]
 
 
+# Competition IDs whose data is entirely pre-2010 and should never be used,
+# even if a future import accidentally assigns them NULL match_dates.
+EXCLUDED_COMP_IDS = {
+    12,   # Serie A 1986/87
+    35,   # UEFA Europa League 1988/89
+    81,   # Liga Profesional 1981 / 1997-98
+    87,   # Copa del Rey 1977-84
+    116,  # North American Soccer League 1977
+}
+
 # Minimum international matches required for full Poisson credibility.
 # Teams below this threshold have their attack/defense indices blended toward
 # the league mean (1.0) proportionally: credibility = min(n, threshold) / threshold.
-POISSON_CREDIBILITY_THRESHOLD = 12
+POISSON_CREDIBILITY_THRESHOLD = 15
+
+# For data-sparse teams (below threshold), attack indices are also hard-capped here.
+# Opponent weighting can't fix minnow-only datasets when those minnows all start
+# near DEFAULT_RATING (e.g. CONCACAF micronations), so an absolute ceiling is needed.
+POISSON_ATTACK_CAP = 1.5
 
 # International competition IDs — used to filter Poisson training data
 INTERNATIONAL_COMP_IDS = {
@@ -132,11 +147,13 @@ def _load_all_matches(alias_map: Dict[int, int]) -> List[dict]:
     NULL/empty match_date rows are kept because they come from recently scraped
     data (AFCON 2025, WC 2026 qualifiers) that was ingested without dates.
     """
+    excl = ",".join(str(i) for i in EXCLUDED_COMP_IDS)
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT home_team_id, away_team_id, home_score, away_score "
             "FROM matches "
             "WHERE home_score IS NOT NULL AND away_score IS NOT NULL "
+            f"AND competition_id NOT IN ({excl}) "
             "AND (match_date IS NULL OR match_date = '' OR match_date >= '2010-01-01')"
         ).fetchall()
     return [{
@@ -152,11 +169,13 @@ def _load_international_matches(alias_map: Dict[int, int]) -> List[dict]:
     AFCON 2025 matches use competition_id=1267 (already in INTERNATIONAL_COMP_IDS) but
     have NULL match_date; they are preserved by the NULL guard in the date filter.
     """
-    ids = ",".join(str(i) for i in INTERNATIONAL_COMP_IDS)
+    ids  = ",".join(str(i) for i in INTERNATIONAL_COMP_IDS)
+    excl = ",".join(str(i) for i in EXCLUDED_COMP_IDS)
     with get_connection() as conn:
         rows = conn.execute(
             f"SELECT home_team_id, away_team_id, home_score, away_score "
             f"FROM matches WHERE competition_id IN ({ids}) "
+            f"AND competition_id NOT IN ({excl}) "
             f"AND home_score IS NOT NULL AND away_score IS NOT NULL "
             f"AND (match_date IS NULL OR match_date = '' OR match_date >= '2010-01-01')"
         ).fetchall()
@@ -392,7 +411,12 @@ def run_wc_simulations(
         n = intl_game_counts.get(tid, 0)
         cred = min(n, POISSON_CREDIBILITY_THRESHOLD) / POISSON_CREDIBILITY_THRESHOLD
         if cred < 1.0:
-            strengths[tid] = {k: cred * v + (1.0 - cred) for k, v in s.items()}
+            blended = {k: cred * v + (1.0 - cred) for k, v in s.items()}
+            # Cap attack indices so minnow-only datasets can't produce attack > 1.5
+            # even when their weak opponents all float near DEFAULT_RATING.
+            for k in ("home_attack", "away_attack"):
+                blended[k] = min(blended[k], POISSON_ATTACK_CAP)
+            strengths[tid] = blended
             regressed.append((n, cred, tid))
 
     if regressed:
