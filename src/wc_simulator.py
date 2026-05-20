@@ -84,6 +84,8 @@ INTERNATIONAL_COMP_IDS = {
     2002,  # CONMEBOL WC 2026 Qualifiers
     2003,  # UEFA WC 2026 Qualifiers
     2004,  # CONCACAF WC 2026 Qualifiers
+    2005,  # UEFA Euro 2024 Qualifying
+    2006,  # UEFA Nations League
 }
 
 

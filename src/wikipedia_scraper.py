@@ -33,12 +33,14 @@ os.environ.setdefault("SSL_CERT_FILE", certifi.where())
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; football-data-bot/1.0; research)"}
 FETCH_DELAY = 2.0
 
-AFCON_COMP_ID      = 1267
-CAF_QUAL_COMP_ID   = 2001
-U20_WC_COMP_ID     = 1470
-CONMEBOL_COMP_ID   = 2002
-UEFA_COMP_ID       = 2003
-CONCACAF_COMP_ID   = 2004
+AFCON_COMP_ID           = 1267
+CAF_QUAL_COMP_ID        = 2001
+U20_WC_COMP_ID          = 1470
+CONMEBOL_COMP_ID        = 2002
+UEFA_COMP_ID            = 2003
+CONCACAF_COMP_ID        = 2004
+UEFA_EURO24_QUAL_ID     = 2005   # UEFA Euro 2024 qualifying
+UEFA_NL_ID              = 2006   # UEFA Nations League (all seasons)
 
 SCORE_RE   = re.compile(r"^(\d+)\s*[\-–]\s*(\d+)(?:\s*\(.*\))?$")
 BRACKET_RE = re.compile(r"\[.*?\]|\(.*?\)")   # strip footnotes like [a], [c]
@@ -56,6 +58,9 @@ URLS = {
     "CONMEBOL WC 2026 Quals":   "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_qualification_(CONMEBOL)",
     "UEFA WC 2026 Quals":       "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_qualification_(UEFA)",
     "CONCACAF WC 2026 Quals":   "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_qualification_(CONCACAF)",
+    "Euro 2024 Qual Group A":   "https://en.wikipedia.org/wiki/UEFA_Euro_2024_qualifying_Group_A",
+    "NL 2024-25 B overview":    "https://en.wikipedia.org/wiki/2024%E2%80%9325_UEFA_Nations_League_B",
+    "NL 2022-23 B overview":    "https://en.wikipedia.org/wiki/2022%E2%80%9323_UEFA_Nations_League_B",
 }
 
 
@@ -340,6 +345,73 @@ def ingest_concacaf_wc_qualifiers() -> None:
     print(f"  Total inserted: {n}")
 
 
+def _extract_h2h_grid_for_team(tables: list[pd.DataFrame], team: str, stage: str) -> list[dict]:
+    """Like _extract_h2h_grid but only returns the grid whose Teamvte column contains *team*."""
+    for t in tables:
+        if "Teamvte" not in t.columns:
+            continue
+        teams_raw = [_clean_team_name(n) for n in t["Teamvte"]]
+        if not any(team.lower() in name.lower() for name in teams_raw):
+            continue
+        # Found the right group — extract all H2H results
+        n = len(teams_raw)
+        h2h_cols = list(t.columns)[-n:]
+        matches = []
+        for i, home in enumerate(teams_raw):
+            for j, away in enumerate(teams_raw):
+                if i == j or not home or not away:
+                    continue
+                cell = str(t.iloc[i][h2h_cols[j]]).strip()
+                score = _parse_score(cell)
+                if score is None:
+                    continue
+                matches.append({
+                    "home": home, "away": away,
+                    "home_score": score[0], "away_score": score[1],
+                    "stage": stage,
+                })
+        return matches
+    return []
+
+
+def ingest_euro2024_qualifying_group_a() -> None:
+    """UEFA Euro 2024 qualifying Group A: Norway, Spain, Scotland, Georgia, Cyprus."""
+    print("\n=== UEFA Euro 2024 Qualifying — Group A ===")
+    url = URLS["Euro 2024 Qual Group A"]
+    print(f"  Fetching {url}...")
+    try:
+        tables = _fetch_tables(url)
+    except Exception as e:
+        print(f"  FAILED ({e})")
+        return
+    raw = _extract_score_header(tables, "Group Stage")
+    print(f"  Found {len(raw)} matches")
+    n = _write_matches(raw, UEFA_EURO24_QUAL_ID, 2023,
+                       "UEFA Euro 2024 Qualifying", "Europe")
+    print(f"  Inserted: {n}")
+
+
+def ingest_nations_league_norway_groups() -> None:
+    """UEFA Nations League groups containing Norway (2022-23 and 2024-25)."""
+    sources = [
+        ("NL 2024-25 B overview",  "https://en.wikipedia.org/wiki/2024%E2%80%9325_UEFA_Nations_League_B",  2025, "NL 2024-25 Group Stage"),
+        ("NL 2022-23 B overview",  "https://en.wikipedia.org/wiki/2022%E2%80%9323_UEFA_Nations_League_B",  2023, "NL 2022-23 Group Stage"),
+    ]
+    print("\n=== UEFA Nations League — Norway's groups ===")
+    for label, url, season, stage in sources:
+        print(f"  Fetching {label}...")
+        try:
+            tables = _fetch_tables(url)
+        except Exception as e:
+            print(f"  FAILED ({e})")
+            continue
+        raw = _extract_h2h_grid_for_team(tables, "Norway", stage)
+        print(f"  Found {len(raw)} matches in Norway's group")
+        n = _write_matches(raw, UEFA_NL_ID, season,
+                           "UEFA Nations League", "Europe")
+        print(f"  Inserted: {n}")
+
+
 def ingest_all() -> None:
     init_schema()
     ingest_afcon_2025()
@@ -348,4 +420,6 @@ def ingest_all() -> None:
     ingest_conmebol_wc_qualifiers()
     ingest_uefa_wc_qualifiers()
     ingest_concacaf_wc_qualifiers()
+    ingest_euro2024_qualifying_group_a()
+    ingest_nations_league_norway_groups()
     print("\nDone.")
