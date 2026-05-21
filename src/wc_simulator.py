@@ -383,7 +383,7 @@ def run_wc_simulations(
 
     print(f"  All matches: {len(all_matches):,}  |  International: {len(intl_matches):,}")
 
-    print("Seeding Elo from FiveThirtyEight SPI ratings...")
+    print("Loading FiveThirtyEight SPI ratings for blended Elo...")
     spi_data = load_spi_ratings()
     seed_elo: Dict[int, float] = {}
     for spi_name, data in spi_data.items():
@@ -393,8 +393,14 @@ def run_wc_simulations(
     seeded = sum(1 for t in (t for g in WC_2026_GROUPS.values() for t in g) if name_id.get(t) in seed_elo)
     print(f"  Seeded {len(seed_elo)} teams from 538 ({seeded}/{len(WC_2026_GROUPS)*4} WC participants covered)")
 
-    print("Computing Elo ratings (538 seed + all matches)...")
-    elo = fit_ratings(all_matches, initial_ratings=seed_elo)
+    print("Computing Elo ratings (50% match-data + 50% 538-seeded blend)...")
+    elo_flat  = fit_ratings(all_matches)
+    elo_538   = fit_ratings(all_matches, initial_ratings=seed_elo)
+    all_tids  = set(elo_flat) | set(elo_538)
+    elo = {
+        tid: 0.5 * elo_flat.get(tid, DEFAULT_RATING) + 0.5 * elo_538.get(tid, DEFAULT_RATING)
+        for tid in all_tids
+    }
 
     print("Computing Poisson strengths (international matches, opponent-weighted)...")
     poisson_weights = [
