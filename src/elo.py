@@ -34,8 +34,10 @@ def update_ratings(rating_home, rating_away, home_score, away_score, k=K_FACTOR,
     return rating_home + k * g * (s_home - e_home), rating_away + k * g * (s_away - e_away)
 
 
-def fit_ratings(matches: Iterable[dict]) -> Dict[int, float]:
+def fit_ratings(matches: Iterable[dict], initial_ratings: Dict[int, float] | None = None) -> Dict[int, float]:
     ratings: Dict[int, float] = defaultdict(lambda: DEFAULT_RATING)
+    if initial_ratings:
+        ratings.update(initial_ratings)
     for m in matches:
         if m["home_score"] is None or m["away_score"] is None:
             continue

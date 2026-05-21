@@ -17,6 +17,7 @@ import numpy as np
 
 from src.db import get_connection
 from src.elo import fit_ratings, DEFAULT_RATING, HOME_ADVANTAGE
+from src.fivethirtyeight import load_spi_ratings
 from src.poisson import compute_team_strengths
 
 # ── Tournament structure ───────────────────────────────────────────────────────
@@ -382,8 +383,18 @@ def run_wc_simulations(
 
     print(f"  All matches: {len(all_matches):,}  |  International: {len(intl_matches):,}")
 
-    print("Computing Elo ratings (all matches)...")
-    elo = fit_ratings(all_matches)
+    print("Seeding Elo from FiveThirtyEight SPI ratings...")
+    spi_data = load_spi_ratings()
+    seed_elo: Dict[int, float] = {}
+    for spi_name, data in spi_data.items():
+        tid = name_id.get(spi_name)
+        if tid is not None:
+            seed_elo[tid] = data["elo"]
+    seeded = sum(1 for t in (t for g in WC_2026_GROUPS.values() for t in g) if name_id.get(t) in seed_elo)
+    print(f"  Seeded {len(seed_elo)} teams from 538 ({seeded}/{len(WC_2026_GROUPS)*4} WC participants covered)")
+
+    print("Computing Elo ratings (538 seed + all matches)...")
+    elo = fit_ratings(all_matches, initial_ratings=seed_elo)
 
     print("Computing Poisson strengths (international matches, opponent-weighted)...")
     poisson_weights = [
