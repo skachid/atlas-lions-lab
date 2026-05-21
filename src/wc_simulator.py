@@ -352,23 +352,26 @@ def _sim_tournament(name_id: Dict[str, int], strengths: dict,
 
 # ── Monte Carlo runner ─────────────────────────────────────────────────────────
 
+_ADJUSTED_OVERRIDES: Dict[str, dict] = {
+    "Morocco": {
+        "elo_boost":      40,
+        "attack_factor":  1.18,
+        "defense_factor": 0.92,
+    }
+}
+
+
 def run_wc_simulations(
     n_simulations: int = 10_000,
     seed: int = 42,
-    overrides: Optional[Dict[str, dict]] = None,
+    mode: str = "baseline",
 ) -> Dict[str, dict]:
     """
     Run Monte Carlo simulations of the 2026 FIFA World Cup.
 
-    overrides: optional per-team adjustments applied after base ratings are computed.
-      Example:
-        overrides = {
-            "Morocco": {
-                "elo_boost":      25,   # flat points added to Elo
-                "attack_factor":  1.12, # multiply Poisson attack strengths
-                "defense_factor": 1.0,  # multiply Poisson defense strengths (lower = better)
-            }
-        }
+    mode="baseline"  — pure match-data Elo from flat 1500, no overrides
+    mode="anchored"  — 538 SPI seed + match-data updates, no overrides
+    mode="adjusted"  — pure match-data Elo + Morocco 2025 evidence overrides
 
     Returns dict: team_name → {p_r32, p_r16, p_qf, p_sf, p_final, p_champion}
     """
@@ -383,24 +386,18 @@ def run_wc_simulations(
 
     print(f"  All matches: {len(all_matches):,}  |  International: {len(intl_matches):,}")
 
-    print("Loading FiveThirtyEight SPI ratings for blended Elo...")
-    spi_data = load_spi_ratings()
-    seed_elo: Dict[int, float] = {}
-    for spi_name, data in spi_data.items():
-        tid = name_id.get(spi_name)
-        if tid is not None:
-            seed_elo[tid] = data["elo"]
-    seeded = sum(1 for t in (t for g in WC_2026_GROUPS.values() for t in g) if name_id.get(t) in seed_elo)
-    print(f"  Seeded {len(seed_elo)} teams from 538 ({seeded}/{len(WC_2026_GROUPS)*4} WC participants covered)")
-
-    print("Computing Elo ratings (50% match-data + 50% 538-seeded blend)...")
-    elo_flat  = fit_ratings(all_matches)
-    elo_538   = fit_ratings(all_matches, initial_ratings=seed_elo)
-    all_tids  = set(elo_flat) | set(elo_538)
-    elo = {
-        tid: 0.5 * elo_flat.get(tid, DEFAULT_RATING) + 0.5 * elo_538.get(tid, DEFAULT_RATING)
-        for tid in all_tids
-    }
+    if mode == "anchored":
+        print("Computing Elo ratings (538 SPI seed + match-data updates)...")
+        spi_data = load_spi_ratings()
+        seed_elo: Dict[int, float] = {
+            name_id[n]: d["elo"] for n, d in spi_data.items() if n in name_id
+        }
+        seeded = sum(1 for t in (t for g in WC_2026_GROUPS.values() for t in g) if name_id.get(t) in seed_elo)
+        print(f"  Seeded {len(seed_elo)} teams from 538 ({seeded}/{len(WC_2026_GROUPS)*4} WC participants covered)")
+        elo = fit_ratings(all_matches, initial_ratings=seed_elo)
+    else:
+        print("Computing Elo ratings (pure match-data, flat 1500 start)...")
+        elo = fit_ratings(all_matches)
 
     print("Computing Poisson strengths (international matches, opponent-weighted)...")
     poisson_weights = [
@@ -447,7 +444,8 @@ def run_wc_simulations(
         for n, cred, tid in wc_regressed:
             print(f"    {id_to_name.get(tid, tid):<25}  {n:>2} matches  cred={cred:.2f}")
 
-    # Apply per-team overrides
+    # Apply per-team overrides (only in "adjusted" mode)
+    overrides = _ADJUSTED_OVERRIDES if mode == "adjusted" else {}
     if overrides:
         for team_name, adj in overrides.items():
             tid = name_id.get(team_name)

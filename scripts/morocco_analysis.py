@@ -41,58 +41,64 @@ plt.rcParams.update({
 
 # ── 1. RUN SIMULATIONS ────────────────────────────────────────────────────────
 
-print("Running simulations (baseline + adjusted)...")
-baseline = run_wc_simulations(n_simulations=10_000, seed=42)
-adjusted = run_wc_simulations(
-    n_simulations=10_000,
-    seed=42,
-    overrides={
-        "Morocco": {
-            "elo_boost":      40,
-            "attack_factor":  1.18,
-            "defense_factor": 0.92,
-        }
-    },
-)
+print("Running simulations (baseline / anchored / adjusted)...")
+baseline = run_wc_simulations(n_simulations=10_000, seed=42, mode="baseline")
+anchored = run_wc_simulations(n_simulations=10_000, seed=42, mode="anchored")
+adjusted = run_wc_simulations(n_simulations=10_000, seed=42, mode="adjusted")
 
 
-# ── 2. CHART 1: TOP CONTENDERS PROBABILITY ────────────────────────────────────
+# ── 2. COMPARISON TABLE ───────────────────────────────────────────────────────
 
 TOP_TEAMS = [
     "Morocco", "Spain", "England", "Netherlands", "France",
     "Norway", "Argentina", "Brazil", "Germany",
 ]
 
-fig, ax = plt.subplots(figsize=(12, 7))
-fig.suptitle("2026 FIFA World Cup — Championship Probability\nBaseline vs Evidence-Adjusted",
-             fontsize=14, fontweight="bold", color="white", y=0.98)
+print()
+print(f"{'Team':<18} {'Baseline':>10} {'Anchored':>10} {'Adjusted':>10}")
+print("-" * 52)
+for t in TOP_TEAMS:
+    marker = " ◀" if t == "Morocco" else ""
+    print(f"{t:<18} {baseline[t]['p_champion']:>9.1%} {anchored[t]['p_champion']:>9.1%} "
+          f"{adjusted[t]['p_champion']:>9.1%}{marker}")
+print()
+
+
+# ── 3. CHART 1: TOP CONTENDERS PROBABILITY ────────────────────────────────────
+
+fig, ax = plt.subplots(figsize=(13, 7))
+fig.suptitle("2026 FIFA World Cup — Championship Probability\nBaseline vs 538-Anchored vs Evidence-Adjusted",
+             fontsize=13, fontweight="bold", color="white", y=0.98)
 
 y = np.arange(len(TOP_TEAMS))
-h = 0.35
+h = 0.24
 
 base_vals = [baseline[t]["p_champion"] * 100 for t in TOP_TEAMS]
-adj_vals  = [adjusted[t]["p_champion"]  * 100 for t in TOP_TEAMS]
+anch_vals = [anchored[t]["p_champion"] * 100 for t in TOP_TEAMS]
+adj_vals  = [adjusted[t]["p_champion"] * 100 for t in TOP_TEAMS]
 
-colors_base = [MOROCCO_RED if t == "Morocco" else "#4a7fb5" for t in TOP_TEAMS]
-colors_adj  = [MOROCCO_GREEN if t == "Morocco" else "#2ecc71" for t in TOP_TEAMS]
+def bar_color(t, base_c, other_c):
+    return base_c if t == "Morocco" else other_c
 
-bars1 = ax.barh(y + h/2, base_vals, h, color=colors_base, alpha=0.75, label="Baseline")
-bars2 = ax.barh(y - h/2, adj_vals,  h, color=colors_adj,  alpha=0.9,  label="Adjusted (player evidence)")
+colors_base = [MOROCCO_RED    if t == "Morocco" else "#4a7fb5" for t in TOP_TEAMS]
+colors_anch = ["#8B0000"      if t == "Morocco" else "#e67e22" for t in TOP_TEAMS]
+colors_adj  = [MOROCCO_GREEN  if t == "Morocco" else "#2ecc71" for t in TOP_TEAMS]
 
-for bar, val in zip(bars2, adj_vals):
-    ax.text(val + 0.1, bar.get_y() + bar.get_height()/2,
-            f"{val:.1f}%", va="center", ha="left", fontsize=8.5, color="white")
+ax.barh(y + h,    base_vals, h, color=colors_base, alpha=0.80, label="Baseline (match-data Elo)")
+ax.barh(y,        anch_vals, h, color=colors_anch, alpha=0.80, label="538-Anchored (SPI seed)")
+bars3 = ax.barh(y - h, adj_vals,  h, color=colors_adj,  alpha=0.90, label="Evidence-Adjusted (+Morocco)")
+
+for bar, val in zip(bars3, adj_vals):
+    ax.text(val + 0.1, bar.get_y() + bar.get_height() / 2,
+            f"{val:.1f}%", va="center", ha="left", fontsize=8, color="white")
 
 ax.set_yticks(y)
 ax.set_yticklabels(TOP_TEAMS, fontsize=10)
 ax.set_xlabel("Championship Probability (%)", fontsize=10)
-ax.axvline(x=0, color="#555", linewidth=0.8)
-ax.set_xlim(0, 16)
+ax.set_xlim(0, 18)
 ax.grid(axis="x", alpha=0.3)
 ax.legend(loc="lower right", fontsize=9)
-
-# Highlight Morocco row
-ax.axhspan(len(TOP_TEAMS)-1 - 0, len(TOP_TEAMS)-1 + 0.5, alpha=0.06, color=MOROCCO_RED)
+ax.axhspan(len(TOP_TEAMS) - 1 - 0.5, len(TOP_TEAMS) - 1 + 0.5, alpha=0.06, color=MOROCCO_RED)
 
 plt.tight_layout()
 plt.savefig(OUT / "1_championship_probability.png", dpi=150, bbox_inches="tight")
